@@ -1,0 +1,5 @@
+beacon-urls = ["https:://beacon-url"]
+
+[[lookahead-providers-relays]]
+chain-id = 1
+relay-urls = ["https://relay-url"]
