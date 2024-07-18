@@ -1,0 +1,24 @@
+[package]
+name = "preconf-rpc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum ={version="0.7.5", features=["tokio"]}
+bytes = "1.6.1"
+clap = {version="4.5.9", features=["derive"]}
+eyre = "0.6.12"
+hashbrown = "0.14.5"
+http = "1.1.0"
+reqwest = { version = "0.12.4", features = ["json"] }
+reqwest-middleware = "0.3"
+reqwest-tracing = "0.5"
+serde = { version = "1.0.203", features = ["derive"] }
+tracing = "0.1.37"
+tokio = { version = "1.38.0", features = ["full"] }
+toml = "0.8.14"
+tower-http = {version="0.5.2", features=["trace"]}
+
+
+[dev-dependencies]
+tempfile = "3.10.1"
