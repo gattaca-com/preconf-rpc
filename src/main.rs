@@ -4,9 +4,16 @@ use clap::{Parser, Subcommand};
 use config::PreconfRpcConfig;
 use eyre::Result;
 use forward_service::{RpcForward, SharedState};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod common;
 mod config;
+mod constants;
 mod forward_service;
+mod lookahead;
+mod preconf;
+mod relay_client;
+mod ssz;
 
 #[derive(Debug, Parser)]
 #[command(name = "preconf-rpc")]
@@ -27,6 +34,7 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    initialize_tracing_log();
     let cli = Cli::parse();
     let config: PreconfRpcConfig = cli.config.into();
     match &cli.command {
@@ -41,4 +49,22 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn initialize_tracing_log() {
+    let level_env = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
+
+    let filter = match level_env.parse::<EnvFilter>() {
+        Ok(f) => f,
+        Err(_) => {
+            eprintln!("Invalid RUST_LOG value {}, defaulting to info", level_env);
+            EnvFilter::new("info")
+        }
+    };
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().compact().with_target(true).with_file(false))
+        .try_init()
+        .unwrap();
 }
