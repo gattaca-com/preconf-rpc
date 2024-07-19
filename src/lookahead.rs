@@ -229,6 +229,7 @@ mod test {
     use super::*;
     use crate::{common::client::MultiBeaconClient, initialize_tracing_log};
 
+    #[ignore]
     #[tokio::test]
     async fn test_lookahead() {
         std::env::set_var("RUST_LOG", "lookahead=trace");

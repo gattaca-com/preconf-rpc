@@ -120,7 +120,6 @@ async fn inner_forward_request(
 #[cfg(test)]
 mod test {
     use std::{
-        str::FromStr,
         sync::{Arc, Mutex},
         time::Duration,
     };
@@ -133,9 +132,7 @@ mod test {
     };
     use bytes::Bytes;
     use eyre::Result;
-    use hashbrown::HashMap;
     use http::StatusCode;
-    use reqwest::Url;
 
     use crate::{
         forward_service::{router, SharedState},
