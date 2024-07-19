@@ -53,7 +53,9 @@ pub fn lookahead_managers_from_config(
     // build managers from relay lookahead providers
     let mut map = HashMap::new();
     for r_c in config.lookahead_providers_relays {
-        let lookahead = Lookahead::Multi(DashMap::new().into());
+        let lookahead = Lookahead{
+            map: DashMap::new().into()
+        };
         let provider = LookaheadProviderOptions {
             head_event_receiver: Some(beacon_tx.subscribe()),
             relay_provider: Some(RelayLookaheadProvider::new(

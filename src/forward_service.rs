@@ -170,7 +170,7 @@ mod test {
     async fn test_missing_chain_id() -> Result<()> {
         tokio::spawn(async move {
             let manager = LookaheadManager::new(
-                Lookahead::Multi(DashMap::new().into()),
+                Lookahead{map: DashMap::new().into()},
                 LookaheadProvider::None,
             );
             let mut managers = HashMap::new();
@@ -190,7 +190,7 @@ mod test {
     async fn test_invalid_chain_id() -> Result<()> {
         tokio::spawn(async move {
             let manager = LookaheadManager::new(
-                Lookahead::Multi(DashMap::new().into()),
+                Lookahead{map: DashMap::new().into()},
                 LookaheadProvider::None,
             );
             let mut managers = HashMap::new();
@@ -214,7 +214,7 @@ mod test {
                 url: "http://not-a-valid-url".into(),
                 ..Default::default()
             });
-            let manager = LookaheadManager::new(Lookahead::Multi(map), LookaheadProvider::None);
+            let manager = LookaheadManager::new(Lookahead{map}, LookaheadProvider::None);
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());
@@ -244,7 +244,7 @@ mod test {
                 url: "http://localhost:12004".into(),
                 ..Default::default()
             });
-            let manager = LookaheadManager::new(Lookahead::Multi(map), LookaheadProvider::None);
+            let manager = LookaheadManager::new(Lookahead{map}, LookaheadProvider::None);
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());
