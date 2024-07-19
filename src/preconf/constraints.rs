@@ -28,21 +28,6 @@ pub struct ConstraintsMessage {
     >,
 }
 
-impl ConstraintsMessage {
-    /// Creates a new Constraints message from preconfs. Treats each preconf as individual
-    /// and makes no bundles.
-    pub fn new(preconfs: Vec<InclusionConstraint>, proposal_slot: u64) -> Self {
-        let mut msg = ConstraintsMessage { slot: proposal_slot, constraints: Default::default() };
-
-        for preconf in preconfs {
-            let constraint = VariableList::new(vec![preconf]).unwrap();
-            msg.constraints.push(constraint).unwrap();
-        }
-
-        msg
-    }
-}
-
 /// Constraint representing a transaction that must be *included* in a block.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, TreeHash)]
 pub struct InclusionConstraint {

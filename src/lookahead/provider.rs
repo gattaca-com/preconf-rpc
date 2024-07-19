@@ -191,7 +191,12 @@ impl LookaheadProviderOptions {
 }
 
 pub enum LookaheadProvider {
-    Relay { provider: RelayLookaheadProvider, receiver: Receiver<HeadEvent> },
+    Relay {
+        provider: RelayLookaheadProvider,
+        receiver: Receiver<HeadEvent>,
+    },
+    #[allow(dead_code)]
+    /// used for testing purpose, LookaheadProvider::None does not fetch any lookhead.
     None,
 }
 

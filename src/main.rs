@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     match &cli.command {
         Commands::Forward { port } => {
             let config = Config::from_file(&cli.config)?;
-            let (beacon_tx, beacon_rx) = broadcast::channel(16);
+            let (beacon_tx, _beacon_rx) = broadcast::channel(16);
             let client = MultiBeaconClient::from_endpoint_strs(&config.beacon_urls);
             client.subscribe_to_head_events(beacon_tx.clone()).await;
             let listening_addr = format!("0.0.0.0:{}", port.unwrap_or(8000));

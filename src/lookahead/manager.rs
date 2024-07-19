@@ -2,7 +2,7 @@ use alloy::rpc::types::beacon::events::HeadEvent;
 use dashmap::DashMap;
 use eyre::{bail, Result};
 use hashbrown::HashMap;
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::sync::broadcast;
 
 use super::{
     provider::LookaheadProvider, Lookahead, LookaheadEntry, LookaheadProviderOptions,
@@ -12,7 +12,7 @@ use crate::config::Config;
 
 enum LookaheadProviderManager {
     Initialized(LookaheadProvider),
-    Running(JoinHandle<()>),
+    Running,
 }
 
 pub struct LookaheadManager {
@@ -32,10 +32,10 @@ impl LookaheadManager {
             self.provider_manager.take().expect("provider manager should never be None");
         match provider_manager {
             LookaheadProviderManager::Initialized(provider) => {
-                let handle = tokio::spawn(async move {
+                let _handle = tokio::spawn(async move {
                     provider.run().await;
                 });
-                self.provider_manager = Some(LookaheadProviderManager::Running(handle));
+                self.provider_manager = Some(LookaheadProviderManager::Running);
                 Ok(())
             }
             _ => bail!("context provider is already running."),

@@ -21,7 +21,6 @@ use reqwest_tracing::{
 use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
-use tracing_subscriber::fmt::format;
 
 use crate::lookahead::LookaheadManager;
 
@@ -153,6 +152,7 @@ mod test {
         Router,
     };
     use bytes::Bytes;
+    use dashmap::DashMap;
     use eyre::Result;
     use hashbrown::HashMap;
     use http::StatusCode;
@@ -169,7 +169,10 @@ mod test {
     #[tokio::test]
     async fn test_missing_chain_id() -> Result<()> {
         tokio::spawn(async move {
-            let manager = LookaheadManager::new(Lookahead::Single(None), LookaheadProvider::None);
+            let manager = LookaheadManager::new(
+                Lookahead::Multi(DashMap::new().into()),
+                LookaheadProvider::None,
+            );
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());
@@ -186,15 +189,18 @@ mod test {
     #[tokio::test]
     async fn test_invalid_chain_id() -> Result<()> {
         tokio::spawn(async move {
-            let manager = LookaheadManager::new(Lookahead::Single(None), LookaheadProvider::None);
+            let manager = LookaheadManager::new(
+                Lookahead::Multi(DashMap::new().into()),
+                LookaheadProvider::None,
+            );
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());
-            let listener = tokio::net::TcpListener::bind("localhost:12001").await.unwrap();
+            let listener = tokio::net::TcpListener::bind("localhost:12002").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let res = reqwest::Client::new().post("http://localhost:12001/2").send().await.unwrap();
+        let res = reqwest::Client::new().post("http://localhost:12002/2").send().await.unwrap();
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
         assert_eq!(res.text().await.unwrap(), "no lookahead provider found for id 2");
         Ok(())
@@ -203,13 +209,12 @@ mod test {
     #[tokio::test]
     async fn test_unavailable_forwarded_service() -> Result<()> {
         tokio::spawn(async move {
-            let manager = LookaheadManager::new(
-                Lookahead::Single(Some(LookaheadEntry {
-                    url: "http://not-a-valid-url.gattaca".into(),
-                    ..Default::default()
-                })),
-                LookaheadProvider::None,
-            );
+            let map = Arc::new(DashMap::new());
+            map.insert(0, LookaheadEntry {
+                url: "http://not-a-valid-url".into(),
+                ..Default::default()
+            });
+            let manager = LookaheadManager::new(Lookahead::Multi(map), LookaheadProvider::None);
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());
@@ -234,13 +239,12 @@ mod test {
             axum::serve(listener, router).await.unwrap();
         });
         tokio::spawn(async move {
-            let manager = LookaheadManager::new(
-                Lookahead::Single(Some(LookaheadEntry {
-                    url: "http://localhost:12004".into(),
-                    ..Default::default()
-                })),
-                LookaheadProvider::None,
-            );
+            let map = Arc::new(DashMap::new());
+            map.insert(0, LookaheadEntry {
+                url: "http://localhost:12004".into(),
+                ..Default::default()
+            });
+            let manager = LookaheadManager::new(Lookahead::Multi(map), LookaheadProvider::None);
             let mut managers = HashMap::new();
             managers.insert(1u16, manager);
             let router = router(SharedState::new(managers).unwrap());

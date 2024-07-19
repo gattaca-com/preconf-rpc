@@ -17,14 +17,6 @@ impl SignedPreconferElection {
     pub fn slot(&self) -> u64 {
         self.message.slot_number
     }
-
-    pub fn chain_id(&self) -> u64 {
-        self.message.chain_id
-    }
-
-    pub fn gas_limit(&self) -> u64 {
-        self.message.gas_limit
-    }
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq, Serialize, Deserialize, TreeHash)]

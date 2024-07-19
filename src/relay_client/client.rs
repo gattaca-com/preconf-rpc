@@ -6,8 +6,8 @@ use tracing::{error, trace};
 
 use super::RelayClientConfig;
 use crate::{
-    constants::{EPOCH_SLOTS, GET_PRECONFERS_PATH, GET_PRECONFER_PATH, SET_CONSTRAINTS_PATH},
-    preconf::{constraints::SignedConstraints, election::SignedPreconferElection},
+    constants::{EPOCH_SLOTS, GET_PRECONFERS_PATH, GET_PRECONFER_PATH},
+    preconf::election::SignedPreconferElection,
     relay_client::error::RelayClientError,
 };
 
@@ -26,11 +26,6 @@ impl RelayClient {
     pub fn new(config: Arc<RelayClientConfig>) -> Self {
         let client = ClientBuilder::new().timeout(RELAY_CLIENT_REQUEST_TIMEOUT).build().unwrap();
         Self { client, config }
-    }
-
-    /// Returns the ID of the relay.
-    pub fn id(&self) -> String {
-        self.config.url.clone()
     }
 
     /// Fetches elected preconfers for the entire epoch.
@@ -110,26 +105,6 @@ impl RelayClient {
 
         let preconfer_election = result.json::<SignedPreconferElection>().await?;
         Ok(Some(preconfer_election))
-    }
-
-    /// Sets constraints for the relay by making a request to the constraints API.
-    /// See spec: [https://www.notion.so/Aligning-Preconfirmation-APIs-db7907d9e66e41718e6bc2cff19604e4?pvs=4#99734b0684f741c8b15eec7661f8940d].
-    pub async fn set_constraints(
-        &self,
-        constraints: SignedConstraints,
-    ) -> Result<(), RelayClientError> {
-        let url = format!("{}{}", self.url(), SET_CONSTRAINTS_PATH);
-
-        let response = self.client.post(&url).json(&constraints).send().await?;
-
-        let status_code = response.status();
-        if status_code.is_success() {
-            Ok(())
-        } else {
-            let error_message =
-                response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            Err(RelayClientError::RelayError { status_code, error: error_message })
-        }
     }
 
     /// Returns the URL of the relay.
