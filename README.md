@@ -1,9 +1,8 @@
 # preconf-rpc
 
-> :warning: **this repository is under heavy development**
+> :warning: **This repository is under heavy development**
 
-
-A command-line interface for executing tpreconf-rpc commands.
+A command-line interface for executing `preconf-rpc` commands.
 
 ## Usage
 
@@ -12,21 +11,38 @@ A command-line interface for executing tpreconf-rpc commands.
 To execute the forward service, use the following command:
 
 ```sh
-./preconf-rpc forward --relay-urls <RELAY_URLS> --beacon-urls <BEACON_URLS> [--port <PORT>]
+./preconf-rpc forward --config <CONFIG_FILE> [--port <PORT>]
 ```
 
 #### Arguments
 
-- `--relay-urls`: Space-separated list of relay URLs.
-- `--beacon-urls`: Space-separated list of beacon URLs.
+- `--config`: Path to the configuration file containing lookahead providers configuration.
 - `--port`: (Optional) Port to run the service on (default is 8000).
 
 ### Example
 
 ```sh
-./preconf-rpcforward --relay-urls http://relay1.url http://relay2.url --beacon-urls http://beacon1.url http://beacon2.url --port 8080
+./preconf-rpc forward --config configuration.toml --port 8080
 ```
 
 ## Environment Variables
 
 - `RUST_LOG`: Set the logging level (default is `info`). Example: `RUST_LOG=debug`.
+
+## Configuration File
+
+Example `configuration.toml`:
+
+```toml
+beacon-urls = ["beacon-url-1", "beacon-url-2"]
+
+[[lookahead-providers-relays]]
+chain-id = 1
+relay-urls = ["relay-1", "relay-2"]
+
+[[lookahead-providers-relays]]
+chain-id = 2
+relay-urls = ["relay-3"]
+```
+
+Make sure to provide the necessary beacon and relay URLs in the configuration file.
