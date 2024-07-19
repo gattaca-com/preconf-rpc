@@ -4,7 +4,7 @@
 
 A RPC proxy that forwards preconfirmations requests to preconfers, based on the current lookahead schedule
 
-![](/assets/schedule.png)
+![](/assets/lookahead.png)
 
 The RPC:
 - builds a local lookahead for each chain id (currently only L1 via the `/preconfer` endpoint on Constraints API)
