@@ -30,21 +30,39 @@ impl LookaheadEntry {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Lookahead(Arc<DashMap<u64, LookaheadEntry>>);
+#[derive(Debug, Clone)]
+pub enum Lookahead {
+    Single(Option<LookaheadEntry>),
+    Multi(Arc<DashMap<u64, LookaheadEntry>>),
+}
 
 impl Lookahead {
-    pub fn new() -> Self {
-        Self(DashMap::new().into())
+    pub fn clear_slots(&mut self, head_slot: u64) {
+        match self {
+            Lookahead::Single(_) => (),
+            Lookahead::Multi(m) => m.retain(|slot, _| *slot >= head_slot),
+        }
     }
-
+    pub fn insert(&mut self, election_slot: u64, slot: LookaheadEntry) {
+        match self {
+            Lookahead::Single(s) => *s = Some(slot),
+            Lookahead::Multi(m) => {
+                m.insert(election_slot, slot);
+            }
+        }
+    }
     /// Returns the next preconfer. If there is no preconfer elected for the current slot,
     /// it will return the next known election. Or None, if there are no elected preconfers in
     /// the next epoch.
     /// Any elected preconfers older than `head_slot` will have been cleared so, we fetch this by
     /// getting the preconfer with the lowest slot number.
     pub fn get_next_elected_preconfer(&self) -> Option<LookaheadEntry> {
-        self.0.iter().min_by_key(|entry| entry.slot()).map(|entry| entry.value().clone())
+        match self {
+            Lookahead::Single(s) => s.clone(),
+            Lookahead::Multi(m) => {
+                m.iter().min_by_key(|entry| entry.slot()).map(|entry| entry.value().clone())
+            }
+        }
     }
 }
 
@@ -116,7 +134,7 @@ impl LookaheadProvider {
         self.set_head_slot(head_slot);
 
         // Clear lookahead of old slots.
-        self.lookahead.0.retain(|slot, _| *slot >= head_slot);
+        self.lookahead.clear_slots(head_slot);
 
         // Only query each epoch once.
         // if self.curr_lookahead_epoch() > curr_epoch {
@@ -182,7 +200,7 @@ impl LookaheadProvider {
         );
 
         let entry = LookaheadEntry { url: preconfer_url, election };
-        self.lookahead.0.insert(election_slot, entry);
+        self.lookahead.insert(election_slot, entry);
     }
 
     /// Returns the current head slot.
@@ -223,7 +241,7 @@ mod test {
         let client = MultiBeaconClient::from_endpoint_strs(&beacons);
         client.subscribe_to_head_events(beacon_tx.clone()).await;
 
-        let lookahead = Lookahead::new();
+        let lookahead = Lookahead::Multi(DashMap::new().into());
         let relays = vec!["http://18.192.244.122:4040".into()];
 
         let provider = LookaheadProvider::new(lookahead, relays, HashMap::new());

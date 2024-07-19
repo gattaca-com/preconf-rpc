@@ -19,8 +19,10 @@ use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 
+use crate::lookahead::Lookahead;
+
 pub(crate) struct SharedState {
-    map_addr: HashMap<u16, Url>,
+    lookahead: Lookahead,
     client: ClientWithMiddleware,
 }
 
@@ -49,9 +51,9 @@ impl ReqwestOtelSpanBackend for TimeTrace {
 }
 
 impl SharedState {
-    pub fn new(map_addr: HashMap<u16, Url>) -> Self {
+    pub fn new(lookahead: Lookahead) -> Self {
         Self {
-            map_addr,
+            lookahead,
             client: ClientBuilder::new(reqwest::Client::new())
                 .with(TracingMiddleware::<TimeTrace>::new())
                 .build(),
@@ -88,8 +90,8 @@ async fn scan_id_forward_request(
     Path(chain_id): Path<u16>,
     body: Bytes,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    if let Some(address) = state.as_ref().map_addr.get(&chain_id) {
-        match inner_forward_request(body, address.clone(), &state.client).await {
+    if let Some(entry) = state.lookahead.get_next_elected_preconfer() {
+        match inner_forward_request(body, &entry.url, &state.client).await {
             Ok(res) => Ok(res),
             Err(_) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -97,7 +99,7 @@ async fn scan_id_forward_request(
             )),
         }
     } else {
-        Err((StatusCode::BAD_REQUEST, format!("unknown chain_id value {}", chain_id)))
+        Err((StatusCode::INTERNAL_SERVER_ERROR, String::from("could not find next preconf")))
     }
 }
 
@@ -107,7 +109,7 @@ async fn forward_request(State(_state): State<Arc<SharedState>>) -> impl IntoRes
 
 async fn inner_forward_request(
     bytes: Bytes,
-    to_addr: Url,
+    to_addr: &str,
     client: &ClientWithMiddleware,
 ) -> Result<impl IntoResponse> {
     let res = client.post(to_addr).body(bytes).send().await?;
@@ -135,7 +137,10 @@ mod test {
     use http::StatusCode;
     use reqwest::Url;
 
-    use crate::forward_service::{router, SharedState};
+    use crate::{
+        forward_service::{router, SharedState},
+        lookahead::{Lookahead, LookaheadEntry},
+    };
 
     struct DummySharedState {
         cnt: i32,
@@ -144,7 +149,7 @@ mod test {
     #[tokio::test]
     async fn test_missing_chain_id() -> Result<()> {
         tokio::spawn(async move {
-            let router = router(SharedState::new(Default::default()));
+            let router = router(SharedState::new(Lookahead::Single(None)));
             let listener = tokio::net::TcpListener::bind("localhost:12001").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -156,25 +161,12 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_unknown_chain_id() -> Result<()> {
-        tokio::spawn(async move {
-            let router = router(SharedState::new(Default::default()));
-            let listener = tokio::net::TcpListener::bind("localhost:12002").await.unwrap();
-            axum::serve(listener, router).await.unwrap();
-        });
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let res = reqwest::Client::new().post("http://localhost:12002/1").send().await.unwrap();
-        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(res.text().await.unwrap(), "unknown chain_id value 1");
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_unavailable_forwarded_service() -> Result<()> {
         tokio::spawn(async move {
-            let mut map = HashMap::new();
-            map.insert(1u16, Url::from_str("http://not-a-valid-url.gattaca").unwrap());
-            let router = router(SharedState::new(map));
+            let router = router(SharedState::new(Lookahead::Single(Some(LookaheadEntry {
+                url: "http://not-a-valid-url.gattaca".into(),
+                ..Default::default()
+            }))));
             let listener = tokio::net::TcpListener::bind("localhost:12003").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -196,9 +188,10 @@ mod test {
             axum::serve(listener, router).await.unwrap();
         });
         tokio::spawn(async move {
-            let mut map = HashMap::new();
-            map.insert(1u16, Url::from_str("http://localhost:12004").unwrap());
-            let router = router(SharedState::new(map));
+            let router = router(SharedState::new(Lookahead::Single(Some(LookaheadEntry {
+                url: "http://localhost:12004".into(),
+                ..Default::default()
+            }))));
             let listener = tokio::net::TcpListener::bind("localhost:12005").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
