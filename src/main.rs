@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use eyre::Result;
 use forward_service::{RpcForward, SharedState};
 use hashbrown::HashMap;
-use lookahead::{Lookahead, LookaheadProvider};
+use lookahead::{Lookahead, LookaheadManager, LookaheadProviderOptions, RelayLookaheadProvider};
 use tokio::sync::broadcast;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -48,22 +48,19 @@ async fn main() -> Result<()> {
 
             let listening_addr = format!("0.0.0.0:{}", port.unwrap_or(8000));
             let lookahead = Lookahead::Multi(DashMap::new().into());
-            let lookahead_provider =
-                LookaheadProvider::new(lookahead.clone(), relay_urls.clone(), HashMap::new());
-            let join_handle_provider = tokio::spawn(async move {
-                lookahead_provider.run(beacon_rx).await;
-            });
-            let join_handle = RpcForward::new(SharedState::new(lookahead), listening_addr)
-                .start_service()
-                .await?;
-            tokio::select! {
-                _ = join_handle_provider => {
-                    panic!("service to fetch next preconfer stopped.")
-                }
-                _ = join_handle => {
-                    panic!("forward service stopped.")
-                }
+            let lookahead_provider = LookaheadProviderOptions {
+                head_event_receiver: Some(beacon_rx),
+                relay_provider: Some(RelayLookaheadProvider::new(
+                    lookahead.clone(),
+                    relay_urls.clone(),
+                    HashMap::new(),
+                )),
             }
+            .build_relay_provider();
+            let manager = LookaheadManager::new(lookahead, lookahead_provider);
+            let join_handle =
+                RpcForward::new(SharedState::new(manager)?, listening_addr).start_service().await?;
+            join_handle.await??;
         }
     }
     Ok(())

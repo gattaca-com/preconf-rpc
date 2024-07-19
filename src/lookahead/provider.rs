@@ -1,70 +1,18 @@
-use std::sync::Arc;
+use std::time::Duration;
 
 use alloy::rpc::types::beacon::{events::HeadEvent, BlsPublicKey};
-use dashmap::DashMap;
-use futures_util::future::join_all;
+use futures::future::join_all;
 use hashbrown::HashMap;
-use tokio::sync::broadcast;
+use tokio::sync::broadcast::{self, Receiver};
 use tracing::{debug, info};
 
+use super::Lookahead;
 use crate::{
     constants::EPOCH_SLOTS,
+    lookahead::LookaheadEntry,
     preconf::election::SignedPreconferElection,
     relay_client::{RelayClient, RelayClientConfig},
 };
-
-/// Wraps a signed election and url.
-#[derive(Debug, Clone, Default)]
-pub struct LookaheadEntry {
-    pub url: String,
-    pub election: SignedPreconferElection,
-}
-
-impl LookaheadEntry {
-    pub fn slot(&self) -> u64 {
-        self.election.slot()
-    }
-
-    pub fn preconfer_pubkey(&self) -> BlsPublicKey {
-        self.election.message.preconfer_pubkey
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Lookahead {
-    Single(Option<LookaheadEntry>),
-    Multi(Arc<DashMap<u64, LookaheadEntry>>),
-}
-
-impl Lookahead {
-    pub fn clear_slots(&mut self, head_slot: u64) {
-        match self {
-            Lookahead::Single(_) => (),
-            Lookahead::Multi(m) => m.retain(|slot, _| *slot >= head_slot),
-        }
-    }
-    pub fn insert(&mut self, election_slot: u64, slot: LookaheadEntry) {
-        match self {
-            Lookahead::Single(s) => *s = Some(slot),
-            Lookahead::Multi(m) => {
-                m.insert(election_slot, slot);
-            }
-        }
-    }
-    /// Returns the next preconfer. If there is no preconfer elected for the current slot,
-    /// it will return the next known election. Or None, if there are no elected preconfers in
-    /// the next epoch.
-    /// Any elected preconfers older than `head_slot` will have been cleared so, we fetch this by
-    /// getting the preconfer with the lowest slot number.
-    pub fn get_next_elected_preconfer(&self) -> Option<LookaheadEntry> {
-        match self {
-            Lookahead::Single(s) => s.clone(),
-            Lookahead::Multi(m) => {
-                m.iter().min_by_key(|entry| entry.slot()).map(|entry| entry.value().clone())
-            }
-        }
-    }
-}
 
 struct LookaheadContext {
     /// Current slot of the `LookaheadProvider`
@@ -74,11 +22,11 @@ struct LookaheadContext {
     curr_lookahead_epoch: u64,
 }
 
-/// The lookahead provider keeps track of the lookahead, i.e. the slot -> preconfer map.
+/// The relay lookahead provider keeps track of the lookahead, i.e. the slot -> preconfer map.
 /// It builds this progressively by querying relays for preconfers for a given slot.
 /// Preconf lookahead is guaranteed at epoch time. So we fetch for epoch + 1 at slot > 1 in the
 /// current epoch.
-pub struct LookaheadProvider {
+pub struct RelayLookaheadProvider {
     /// Maps a slot to the elected preconfer for that slot.
     lookahead: Lookahead,
     /// Maps a preconfer pubkey to known url.
@@ -89,7 +37,7 @@ pub struct LookaheadProvider {
     context: LookaheadContext,
 }
 
-impl LookaheadProvider {
+impl RelayLookaheadProvider {
     /// Creates a new `LookaheadProvider` with the given relays.
     pub fn new(
         lookahead: Lookahead,
@@ -115,7 +63,7 @@ impl LookaheadProvider {
 
     /// Runs indefinitely, subscribes to new head events.
     /// At set times, determines which preconfers have been elected for each slot in the next epoch.
-    pub async fn run(mut self, mut head_event_rx: broadcast::Receiver<HeadEvent>) {
+    async fn run(mut self, mut head_event_rx: broadcast::Receiver<HeadEvent>) {
         while let Ok(head_event) = head_event_rx.recv().await {
             self.on_new_head_event(head_event).await;
         }
@@ -169,7 +117,7 @@ impl LookaheadProvider {
             match result {
                 Ok(Some(preconfer_elections)) => {
                     for election in preconfer_elections {
-                        self.add_elected_preconfer_to_lookahead(election).await;
+                        self.add_elected_preconfer_to_lookahead(election);
                     }
                 }
                 Ok(None) => {
@@ -186,7 +134,7 @@ impl LookaheadProvider {
 
     /// Adds a new election to our lookahead. Will overwrite any existing elected preconfer for that
     /// slot.
-    async fn add_elected_preconfer_to_lookahead(&mut self, election: SignedPreconferElection) {
+    fn add_elected_preconfer_to_lookahead(&mut self, election: SignedPreconferElection) {
         let preconfer_url =
             self.preconfer_registry.get(&election.preconfer_pubkey()).cloned().unwrap_or_default();
 
@@ -224,29 +172,41 @@ impl LookaheadProvider {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::{common::client::MultiBeaconClient, initialize_tracing_log};
+#[derive(Default)]
+pub struct LookaheadProviderOptions {
+    pub relay_provider: Option<RelayLookaheadProvider>,
+    pub head_event_receiver: Option<Receiver<HeadEvent>>,
+}
 
-    #[ignore]
-    #[tokio::test]
-    async fn test_lookahead() {
-        std::env::set_var("RUST_LOG", "lookahead=trace");
+impl LookaheadProviderOptions {
+    pub fn build_relay_provider(self) -> LookaheadProvider {
+        LookaheadProvider::Relay {
+            provider: self
+                .relay_provider
+                .expect("relay provider is mandatory to build relay provider"),
+            receiver: self
+                .head_event_receiver
+                .expect("head event receiver is mandatory to build relay provider"),
+        }
+    }
+}
 
-        initialize_tracing_log();
+pub enum LookaheadProvider {
+    Relay { provider: RelayLookaheadProvider, receiver: Receiver<HeadEvent> },
+    None,
+}
 
-        let beacons = vec!["https://bn.bootnode.helder-devnets.xyz/".into()];
+impl LookaheadProvider {
+    pub async fn run(self) {
+        match self {
+            LookaheadProvider::Relay { provider, receiver } => provider.run(receiver).await,
+            LookaheadProvider::None => LookaheadProvider::wait().await,
+        };
+    }
 
-        let (beacon_tx, beacon_rx) = broadcast::channel(16);
-        let client = MultiBeaconClient::from_endpoint_strs(&beacons);
-        client.subscribe_to_head_events(beacon_tx.clone()).await;
-
-        let lookahead = Lookahead::Multi(DashMap::new().into());
-        let relays = vec!["http://18.192.244.122:4040".into()];
-
-        let provider = LookaheadProvider::new(lookahead, relays, HashMap::new());
-
-        provider.run(beacon_rx).await;
+    async fn wait() {
+        loop {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     }
 }

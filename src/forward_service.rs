@@ -8,9 +8,8 @@ use axum::{
 };
 use bytes::Bytes;
 use eyre::{Context, Result};
-use hashbrown::HashMap;
 use http::Extensions;
-use reqwest::{Request, Response, StatusCode, Url};
+use reqwest::{Request, Response, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_tracing::{
     default_on_request_end, reqwest_otel_span, ReqwestOtelSpanBackend, TracingMiddleware,
@@ -19,10 +18,10 @@ use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
 
-use crate::lookahead::Lookahead;
+use crate::lookahead::LookaheadManager;
 
 pub(crate) struct SharedState {
-    lookahead: Lookahead,
+    manager: LookaheadManager,
     client: ClientWithMiddleware,
 }
 
@@ -51,13 +50,14 @@ impl ReqwestOtelSpanBackend for TimeTrace {
 }
 
 impl SharedState {
-    pub fn new(lookahead: Lookahead) -> Self {
-        Self {
-            lookahead,
+    pub fn new(mut manager: LookaheadManager) -> Result<Self> {
+        manager.run_provider()?;
+        Ok(Self {
+            manager,
             client: ClientBuilder::new(reqwest::Client::new())
                 .with(TracingMiddleware::<TimeTrace>::new())
                 .build(),
-        }
+        })
     }
 }
 
@@ -90,7 +90,7 @@ async fn scan_id_forward_request(
     Path(chain_id): Path<u16>,
     body: Bytes,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    if let Some(entry) = state.lookahead.get_next_elected_preconfer() {
+    if let Some(entry) = state.manager.get_next_elected_preconfer() {
         match inner_forward_request(body, &entry.url, &state.client).await {
             Ok(res) => Ok(res),
             Err(_) => Err((
@@ -136,7 +136,7 @@ mod test {
 
     use crate::{
         forward_service::{router, SharedState},
-        lookahead::{Lookahead, LookaheadEntry},
+        lookahead::{Lookahead, LookaheadEntry, LookaheadManager, LookaheadProvider},
     };
 
     struct DummySharedState {
@@ -146,7 +146,8 @@ mod test {
     #[tokio::test]
     async fn test_missing_chain_id() -> Result<()> {
         tokio::spawn(async move {
-            let router = router(SharedState::new(Lookahead::Single(None)));
+            let manager = LookaheadManager::new(Lookahead::Single(None), LookaheadProvider::None);
+            let router = router(SharedState::new(manager).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12001").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -160,10 +161,14 @@ mod test {
     #[tokio::test]
     async fn test_unavailable_forwarded_service() -> Result<()> {
         tokio::spawn(async move {
-            let router = router(SharedState::new(Lookahead::Single(Some(LookaheadEntry {
-                url: "http://not-a-valid-url.gattaca".into(),
-                ..Default::default()
-            }))));
+            let manager = LookaheadManager::new(
+                Lookahead::Single(Some(LookaheadEntry {
+                    url: "http://not-a-valid-url.gattaca".into(),
+                    ..Default::default()
+                })),
+                LookaheadProvider::None,
+            );
+            let router = router(SharedState::new(manager).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12003").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -185,10 +190,14 @@ mod test {
             axum::serve(listener, router).await.unwrap();
         });
         tokio::spawn(async move {
-            let router = router(SharedState::new(Lookahead::Single(Some(LookaheadEntry {
-                url: "http://localhost:12004".into(),
-                ..Default::default()
-            }))));
+            let manager = LookaheadManager::new(
+                Lookahead::Single(Some(LookaheadEntry {
+                    url: "http://localhost:12004".into(),
+                    ..Default::default()
+                })),
+                LookaheadProvider::None,
+            );
+            let router = router(SharedState::new(manager).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12005").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
