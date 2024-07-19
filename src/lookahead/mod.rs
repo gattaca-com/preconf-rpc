@@ -1,17 +1,11 @@
 use std::sync::Arc;
 
-use alloy::rpc::types::beacon::{events::HeadEvent, BlsPublicKey};
+use alloy::rpc::types::beacon::BlsPublicKey;
 use dashmap::DashMap;
-use futures_util::future::join_all;
 use hashbrown::HashMap;
 use tokio::sync::broadcast;
-use tracing::{debug, info};
 
-use crate::{
-    constants::EPOCH_SLOTS,
-    preconf::election::SignedPreconferElection,
-    relay_client::{RelayClient, RelayClientConfig},
-};
+use crate::preconf::election::SignedPreconferElection;
 
 mod manager;
 mod provider;

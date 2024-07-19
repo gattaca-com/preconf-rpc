@@ -28,7 +28,7 @@ impl RelayClient {
         Self { client, config }
     }
 
-    /// Rteturns the ID of the relay.
+    /// Returns the ID of the relay.
     pub fn id(&self) -> String {
         self.config.url.clone()
     }

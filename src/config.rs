@@ -1,7 +1,6 @@
 use std::{fs, path::Path};
 
 use eyre::{Result, WrapErr};
-use hashbrown::HashMap;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

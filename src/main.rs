@@ -2,11 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use common::client::MultiBeaconClient;
-use dashmap::DashMap;
 use eyre::Result;
 use forward_service::{RpcForward, SharedState};
-use hashbrown::HashMap;
-use lookahead::{Lookahead, LookaheadManager, LookaheadProviderOptions, RelayLookaheadProvider};
 use tokio::sync::broadcast;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 

@@ -47,7 +47,6 @@ impl RelayLookaheadProvider {
         let relays = relay_urls
             .into_iter()
             .map(|url| {
-                // TODO: read from config
                 let config = RelayClientConfig::new(url, true);
                 RelayClient::new(config.into())
             })
