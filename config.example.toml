@@ -1,6 +1,3 @@
-[forward]
-addr = "localhost"
-port = 10053
-
-[redirection_urls]
-"1" = "https://postman-echo.com/post"
+[[lookahead-providers-relays]]
+chain-id = 1
+relay-urls = ["http://18.192.244.122:4040"]

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use common::client::MultiBeaconClient;
 use dashmap::DashMap;
@@ -8,7 +10,10 @@ use lookahead::{Lookahead, LookaheadManager, LookaheadProviderOptions, RelayLook
 use tokio::sync::broadcast;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+use crate::{config::Config, lookahead::lookahead_managers_from_config};
+
 mod common;
+mod config;
 mod constants;
 mod forward_service;
 mod lookahead;
@@ -21,14 +26,15 @@ mod ssz;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    /// configuration file containing lookahead providers configuration.
+    #[clap(short, long)]
+    config: PathBuf,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// execute the forward service
     Forward {
-        #[clap(short, long, value_delimiter = ' ', num_args = 1..)]
-        relay_urls: Vec<String>,
         #[clap(short, long, value_delimiter = ' ', num_args = 1..)]
         beacon_urls: Vec<String>,
         #[clap(short, long)]
@@ -41,32 +47,24 @@ async fn main() -> Result<()> {
     initialize_tracing_log();
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Forward { relay_urls, beacon_urls, port } => {
+        Commands::Forward { beacon_urls, port } => {
+            let config = Config::from_file(&cli.config)?;
             let (beacon_tx, beacon_rx) = broadcast::channel(16);
             let client = MultiBeaconClient::from_endpoint_strs(&beacon_urls);
             client.subscribe_to_head_events(beacon_tx.clone()).await;
-
             let listening_addr = format!("0.0.0.0:{}", port.unwrap_or(8000));
-            let lookahead = Lookahead::Multi(DashMap::new().into());
-            let lookahead_provider = LookaheadProviderOptions {
-                head_event_receiver: Some(beacon_rx),
-                relay_provider: Some(RelayLookaheadProvider::new(
-                    lookahead.clone(),
-                    relay_urls.clone(),
-                    HashMap::new(),
-                )),
-            }
-            .build_relay_provider();
-            let manager = LookaheadManager::new(lookahead, lookahead_provider);
-            let join_handle =
-                RpcForward::new(SharedState::new(manager)?, listening_addr).start_service().await?;
+
+            let managers = lookahead_managers_from_config(config, beacon_tx);
+            let join_handle = RpcForward::new(SharedState::new(managers)?, listening_addr)
+                .start_service()
+                .await?;
             join_handle.await??;
         }
     }
     Ok(())
 }
 
-pub fn initialize_tracing_log() {
+fn initialize_tracing_log() {
     let level_env = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
 
     let filter = match level_env.parse::<EnvFilter>() {

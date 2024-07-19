@@ -16,7 +16,7 @@ use crate::{
 mod manager;
 mod provider;
 
-pub use manager::LookaheadManager;
+pub use manager::*;
 pub use provider::*;
 
 /// Wraps a signed election and url.

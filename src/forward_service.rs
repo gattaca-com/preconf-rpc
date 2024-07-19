@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use axum::{
     extract::{Path, State},
@@ -8,6 +11,7 @@ use axum::{
 };
 use bytes::Bytes;
 use eyre::{Context, Result};
+use hashbrown::HashMap;
 use http::Extensions;
 use reqwest::{Request, Response, StatusCode};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -17,11 +21,12 @@ use reqwest_tracing::{
 use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
 use tracing::Span;
+use tracing_subscriber::fmt::format;
 
 use crate::lookahead::LookaheadManager;
 
 pub(crate) struct SharedState {
-    manager: LookaheadManager,
+    managers: HashMap<u16, LookaheadManager>,
     client: ClientWithMiddleware,
 }
 
@@ -50,13 +55,18 @@ impl ReqwestOtelSpanBackend for TimeTrace {
 }
 
 impl SharedState {
-    pub fn new(mut manager: LookaheadManager) -> Result<Self> {
-        manager.run_provider()?;
+    pub fn new(mut managers: HashMap<u16, LookaheadManager>) -> Result<Self> {
+        // start lookahead provider for each manager
+        for (_, manager) in managers.iter_mut() {
+            manager.run_provider()?;
+        }
         Ok(Self {
-            manager,
-            client: ClientBuilder::new(reqwest::Client::new())
-                .with(TracingMiddleware::<TimeTrace>::new())
-                .build(),
+            managers,
+            client: ClientBuilder::new(
+                reqwest::ClientBuilder::new().timeout(Duration::from_secs(10)).build()?,
+            )
+            .with(TracingMiddleware::<TimeTrace>::new())
+            .build(),
         })
     }
 }
@@ -90,16 +100,23 @@ async fn scan_id_forward_request(
     Path(chain_id): Path<u16>,
     body: Bytes,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    if let Some(entry) = state.manager.get_next_elected_preconfer() {
-        match inner_forward_request(body, &entry.url, &state.client).await {
-            Ok(res) => Ok(res),
-            Err(_) => Err((
+    if let Some(manager) = state.managers.get(&chain_id) {
+        if let Some(entry) = manager.get_next_elected_preconfer() {
+            match inner_forward_request(body, &entry.url, &state.client).await {
+                Ok(res) => Ok(res),
+                Err(_) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "error while forwarding request".to_string(),
+                )),
+            }
+        } else {
+            Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "error while forwarding request".to_string(),
-            )),
+                format!("no preconfer has been elected for chain_id {}", chain_id),
+            ))
         }
     } else {
-        Err((StatusCode::INTERNAL_SERVER_ERROR, String::from("could not find next preconf")))
+        Err((StatusCode::BAD_REQUEST, format!("no lookahead provider found for id {}", chain_id)))
     }
 }
 
@@ -132,6 +149,7 @@ mod test {
     };
     use bytes::Bytes;
     use eyre::Result;
+    use hashbrown::HashMap;
     use http::StatusCode;
 
     use crate::{
@@ -147,7 +165,9 @@ mod test {
     async fn test_missing_chain_id() -> Result<()> {
         tokio::spawn(async move {
             let manager = LookaheadManager::new(Lookahead::Single(None), LookaheadProvider::None);
-            let router = router(SharedState::new(manager).unwrap());
+            let mut managers = HashMap::new();
+            managers.insert(1u16, manager);
+            let router = router(SharedState::new(managers).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12001").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -155,6 +175,23 @@ mod test {
         let res = reqwest::Client::new().post("http://localhost:12001").send().await.unwrap();
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
         assert_eq!(res.text().await.unwrap(), "missing chain_id parameter");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_invalid_chain_id() -> Result<()> {
+        tokio::spawn(async move {
+            let manager = LookaheadManager::new(Lookahead::Single(None), LookaheadProvider::None);
+            let mut managers = HashMap::new();
+            managers.insert(1u16, manager);
+            let router = router(SharedState::new(managers).unwrap());
+            let listener = tokio::net::TcpListener::bind("localhost:12001").await.unwrap();
+            axum::serve(listener, router).await.unwrap();
+        });
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let res = reqwest::Client::new().post("http://localhost:12001/2").send().await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(res.text().await.unwrap(), "no lookahead provider found for id 2");
         Ok(())
     }
 
@@ -168,7 +205,9 @@ mod test {
                 })),
                 LookaheadProvider::None,
             );
-            let router = router(SharedState::new(manager).unwrap());
+            let mut managers = HashMap::new();
+            managers.insert(1u16, manager);
+            let router = router(SharedState::new(managers).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12003").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });
@@ -197,7 +236,9 @@ mod test {
                 })),
                 LookaheadProvider::None,
             );
-            let router = router(SharedState::new(manager).unwrap());
+            let mut managers = HashMap::new();
+            managers.insert(1u16, manager);
+            let router = router(SharedState::new(managers).unwrap());
             let listener = tokio::net::TcpListener::bind("localhost:12005").await.unwrap();
             axum::serve(listener, router).await.unwrap();
         });

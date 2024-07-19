@@ -1,7 +1,14 @@
+use alloy::rpc::types::beacon::events::HeadEvent;
+use dashmap::DashMap;
 use eyre::{bail, Result};
+use hashbrown::HashMap;
 use tokio::{sync::broadcast, task::JoinHandle};
 
-use super::{provider::LookaheadProvider, Lookahead, LookaheadEntry};
+use super::{
+    provider::LookaheadProvider, Lookahead, LookaheadEntry, LookaheadProviderOptions,
+    RelayLookaheadProvider,
+};
+use crate::config::Config;
 
 enum LookaheadProviderManager {
     Initialized(LookaheadProvider),
@@ -37,4 +44,26 @@ impl LookaheadManager {
     pub fn get_next_elected_preconfer(&self) -> Option<LookaheadEntry> {
         self.lookahead.get_next_elected_preconfer()
     }
+}
+
+pub fn lookahead_managers_from_config(
+    config: Config,
+    beacon_tx: broadcast::Sender<HeadEvent>,
+) -> HashMap<u16, LookaheadManager> {
+    // build managers from relay lookahead providers
+    let mut map = HashMap::new();
+    for r_c in config.lookahead_providers_relays {
+        let lookahead = Lookahead::Multi(DashMap::new().into());
+        let provider = LookaheadProviderOptions {
+            head_event_receiver: Some(beacon_tx.subscribe()),
+            relay_provider: Some(RelayLookaheadProvider::new(
+                lookahead.clone(),
+                r_c.relay_urls,
+                HashMap::new(),
+            )),
+        }
+        .build_relay_provider();
+        map.insert(r_c.chain_id, LookaheadManager::new(lookahead, provider));
+    }
+    map
 }
