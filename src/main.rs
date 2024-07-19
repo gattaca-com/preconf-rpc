@@ -35,8 +35,6 @@ struct Cli {
 enum Commands {
     /// execute the forward service
     Forward {
-        #[clap(short, long, value_delimiter = ' ', num_args = 1..)]
-        beacon_urls: Vec<String>,
         #[clap(short, long)]
         port: Option<u16>,
     },
@@ -47,10 +45,10 @@ async fn main() -> Result<()> {
     initialize_tracing_log();
     let cli = Cli::parse();
     match &cli.command {
-        Commands::Forward { beacon_urls, port } => {
+        Commands::Forward { port } => {
             let config = Config::from_file(&cli.config)?;
             let (beacon_tx, beacon_rx) = broadcast::channel(16);
-            let client = MultiBeaconClient::from_endpoint_strs(&beacon_urls);
+            let client = MultiBeaconClient::from_endpoint_strs(&config.beacon_urls);
             client.subscribe_to_head_events(beacon_tx.clone()).await;
             let listening_addr = format!("0.0.0.0:{}", port.unwrap_or(8000));
 

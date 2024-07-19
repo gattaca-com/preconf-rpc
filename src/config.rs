@@ -8,6 +8,8 @@ use serde::Deserialize;
 pub struct Config {
     #[serde(rename = "lookahead-providers-relays")]
     pub lookahead_providers_relays: Vec<LookaheadProvider>,
+    #[serde(rename = "beacon-urls")]
+    pub beacon_urls: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

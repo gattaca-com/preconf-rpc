@@ -1,3 +1,5 @@
+beacon-urls = ["https://bn.bootnode.helder-devnets.xyz/"]
+
 [[lookahead-providers-relays]]
 chain-id = 1
 relay-urls = ["http://18.192.244.122:4040"]
