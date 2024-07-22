@@ -2,7 +2,13 @@
 
 > :warning: **This repository is under heavy development**
 
-A command-line interface for executing `preconf-rpc` commands.
+A RPC proxy that forwards preconfirmations requests to preconfers, based on the current lookahead schedule
+
+![](/assets/lookahead.png)
+
+The RPC:
+- builds a local lookahead for each chain id (currently only L1 via the `/preconfer` endpoint on Constraints API)
+- forwards requests from users to the next lookahed in the schedule
 
 ## Usage
 
