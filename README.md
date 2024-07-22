@@ -40,15 +40,23 @@ To execute the forward service, use the following command:
 Example `configuration.toml`:
 
 ```toml
-beacon-urls = ["beacon-url-1", "beacon-url-2"]
+beacon-nodes = ["beacon-url-1", "beacon-url-2"]
 
-[[lookahead-providers-relays]]
+[[lookahead]]
 chain-id = 1
-relay-urls = ["relay-1", "relay-2"]
+relays = ["relay-1", "relay-2"]
 
-[[lookahead-providers-relays]]
+[[lookahead]]
+url-provider = "lookahead"
 chain-id = 2
-relay-urls = ["relay-3"]
+relays = ["relay-3"]
+[[lookahead.registry]]
+"0x8248efd1f054fcccd090879c4011ed91ee9f9d0db5ad125ae1af74fdd33de809ddc882400d99b5184ca065d4570df8cc"  = "http://a-preconfer-url.xyz"
 ```
+
+### Details
+- url-provider: Specifies the source of the URL. It can be either lookahead or url-mapping. 
+  - If set to **lookahead**, the URL is derived from the lookahead entry. 
+  - If set to **url-mapping**, the URL is determined by looking up the public keys between the lookahead entry public key and the map provided in registry.
 
 Make sure to provide the necessary beacon and relay URLs in the configuration file.

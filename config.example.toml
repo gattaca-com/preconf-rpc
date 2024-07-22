@@ -1,5 +1,8 @@
-beacon-urls = ["https:://beacon-url"]
+beacon-nodes = ["https:://beacon-url"]
 
-[[lookahead-providers-relays]]
+[[lookahead]]
+url-provider = "lookahead"
 chain-id = 1
-relay-urls = ["https://relay-url"]
+relays = []
+[[lookahead.registry]]
+"0x8248efd1f054fcccd090879c4011ed91ee9f9d0db5ad125ae1af74fdd33de809ddc882400d99b5184ca065d4570df8cc"  = "http://a-preconfer-url.xyz"
