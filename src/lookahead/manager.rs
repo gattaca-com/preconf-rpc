@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use alloy::rpc::types::beacon::{events::HeadEvent, BlsPublicKey};
 use dashmap::DashMap;
-use eyre::{bail, ContextCompat, Result};
+use eyre::{bail, ContextCompat, Result, WrapErr};
 use hashbrown::HashMap;
 use tokio::sync::broadcast;
 use url::Url;
@@ -83,7 +83,7 @@ impl LookaheadManager {
             None => bail!("no lookahead provider found"),
             Some(entry) => match &self.url_provider {
                 UrlProvider::LookaheadEntry => {
-                    Ok(Url::from_str(&entry.url).expect("not a valid url"))
+                    Ok(Url::from_str(&entry.url).wrap_err("not a valid url")?)
                 }
                 UrlProvider::UrlMap(m) => {
                     let pub_key = entry.election.preconfer_pubkey();
@@ -103,7 +103,7 @@ pub fn lookahead_managers_from_config(
 ) -> HashMap<u16, LookaheadManager> {
     // build managers from relay lookahead providers
     let mut map = HashMap::new();
-    for r_c in config.lookahead_providers_relays {
+    for r_c in config.lookaheads {
         let lookahead = Lookahead { map: DashMap::new().into() };
         let provider = LookaheadProviderOptions {
             head_event_receiver: Some(beacon_tx.subscribe()),
@@ -114,9 +114,9 @@ pub fn lookahead_managers_from_config(
             )),
         }
         .build_relay_provider();
-        let url_provider = match r_c.url_provider {
-            crate::config::UrlProvider::Lookahead => UrlProvider::LookaheadEntry,
-            crate::config::UrlProvider::Registry => {
+        let url_provider = match r_c.provider {
+            crate::config::Provider::Lookahead => UrlProvider::LookaheadEntry,
+            crate::config::Provider::Registry => {
                 UrlProvider::UrlMap(r_c.registry.expect("registry is empty"))
             }
         };

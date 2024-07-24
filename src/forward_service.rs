@@ -21,7 +21,7 @@ use reqwest_tracing::{
 };
 use tokio::task::JoinHandle;
 use tower_http::trace::TraceLayer;
-use tracing::Span;
+use tracing::{error, Span};
 use url::Url;
 
 use crate::lookahead::LookaheadManager;
@@ -102,7 +102,6 @@ fn router(shared_state: SharedState) -> Router {
         .with_state(Arc::new(shared_state))
 }
 
-#[tracing::instrument]
 async fn scan_id_forward_request(
     State(state): State<Arc<SharedState>>,
     Path(chain_id): Path<u16>,
@@ -113,14 +112,21 @@ async fn scan_id_forward_request(
         match manager.get_url() {
             Ok(url) => match inner_forward_request(&state.client, url, body, headers).await {
                 Ok(res) => Ok(res),
-                Err(_) => Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "error while forwarding request".to_string(),
-                )),
+                Err(err) => {
+                    error!(name: "inner_forward_request", "{:?}", err);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "error while forwarding request".to_string(),
+                    ))
+                }
             },
-            Err(err) => Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string())),
+            Err(err) => {
+                error!(name: "manager.get_url", "{:?}", err);
+                Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
+            }
         }
     } else {
+        error!(name: "managers.get", "no lookahead provider found for chain-id {}", chain_id);
         Err((
             StatusCode::BAD_REQUEST,
             format!("no lookahead provider found for chain-id {}", chain_id),
