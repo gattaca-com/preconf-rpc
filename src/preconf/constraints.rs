@@ -59,7 +59,6 @@ mod tests {
         };
 
         let s = serde_json::to_string(&singed_constraints).unwrap();
-        let encode = alloy::primitives::hex::encode(s);
-        println!("{}", encode);
+        let _encode = alloy::primitives::hex::encode(s);
     }
 }

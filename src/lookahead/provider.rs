@@ -14,6 +14,7 @@ use crate::{
     relay_client::{RelayClient, RelayClientConfig},
 };
 
+#[derive(Debug)]
 struct LookaheadContext {
     /// Current slot of the `LookaheadProvider`
     head_slot: u64,
@@ -22,6 +23,7 @@ struct LookaheadContext {
     curr_lookahead_epoch: u64,
 }
 
+#[derive(Debug)]
 /// The relay lookahead provider keeps track of the lookahead, i.e. the slot -> preconfer map.
 /// It builds this progressively by querying relays for preconfers for a given slot.
 /// Preconf lookahead is guaranteed at epoch time. So we fetch for epoch + 1 at slot > 1 in the
@@ -190,6 +192,7 @@ impl LookaheadProviderOptions {
     }
 }
 
+#[derive(Debug)]
 /// `LookaheadProvider` is an enumeration representing the implemented lookahead providers
 /// to fetch upcoming lookahead entries from different sources.
 pub enum LookaheadProvider {
