@@ -39,7 +39,7 @@ tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tree_hash = "0.6.0"
 tree_hash_derive = "0.6.0"
-url = "2.5.0"
+url = { version="2.5.0", features=["serde"] }
 
 
 [dev-dependencies]

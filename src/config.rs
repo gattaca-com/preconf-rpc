@@ -1,9 +1,9 @@
-use std::{fs, path::Path, str::FromStr};
+use std::{fs, path::Path};
 
 use alloy::rpc::types::beacon::BlsPublicKey;
 use eyre::{Result, WrapErr};
 use hashbrown::HashMap;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -27,36 +27,10 @@ pub struct Lookahead {
     pub chain_id: u16,
     #[serde(rename = "relays")]
     pub relays: Vec<String>,
-    #[serde(rename = "registry", default, deserialize_with = "deserialize_registry")]
+    #[serde(rename = "registry")]
     pub registry: Option<HashMap<BlsPublicKey, Url>>,
     #[serde(rename = "url-provider")]
     pub url_provider: UrlProvider,
-}
-
-fn deserialize_registry<'de, D>(
-    deserializer: D,
-) -> Result<Option<HashMap<BlsPublicKey, Url>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let temp_registry: Option<HashMap<String, String>> = Option::deserialize(deserializer)?;
-    if let Some(temp_registry) = temp_registry {
-        let mut registry: HashMap<BlsPublicKey, Url> = HashMap::new();
-
-        for (key, value) in temp_registry {
-            match BlsPublicKey::from_str(key.as_str()) {
-                Ok(bls_key) => {
-                    registry.insert(bls_key, Url::from_str(&value).unwrap());
-                }
-                Err(_) => {
-                    return Err(serde::de::Error::custom(format!("Failed to convert key: {}", key)));
-                }
-            }
-        }
-        Ok(Some(registry))
-    } else {
-        Ok(None)
-    }
 }
 
 impl Config {
