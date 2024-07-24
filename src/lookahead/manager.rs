@@ -116,7 +116,9 @@ pub fn lookahead_managers_from_config(
         .build_relay_provider();
         let url_provider = match r_c.url_provider {
             crate::config::UrlProvider::Lookahead => UrlProvider::LookaheadEntry,
-            crate::config::UrlProvider::UrlMapping => UrlProvider::UrlMap(r_c.registry),
+            crate::config::UrlProvider::Registry => {
+                UrlProvider::UrlMap(r_c.registry.expect("registry is empty"))
+            }
         };
         map.insert(r_c.chain_id, LookaheadManager::new(lookahead, provider, url_provider));
     }
